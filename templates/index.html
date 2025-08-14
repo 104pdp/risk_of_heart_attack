@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Предсказание рисков сердечного приступа</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#0b1020; --card:#121831; --text:#e7ecf7; --sub:#9fb3d1; --accent:#3aa675; --accent2:#2d65d8; }
+    body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial;}
+    .wrap{max-width:900px;margin:40px auto;padding:0 16px;}
+    .card{background:var(--card);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:28px;}
+    h1{margin:0 0 16px;font-size:28px}
+    .hint{color:var(--sub);margin-top:8px}
+    .row{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:18px 0 12px}
+    input[type=file]{width:100%;padding:10px;border-radius:10px;border:1px dashed #3b437a;background:#0f1531;color:var(--text)}
+    button{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer}
+    .btn-green{background:var(--accent);color:#fff}
+    .btn-blue{background:var(--accent2);color:#fff}
+    .btn-ghost{background:transparent;border:1px solid #2b3466;color:#cbd6f1}
+    .status{font-size:14px;color:#a9b9db;margin:8px 0 0}
+    pre{background:#0f1531;color:#cfe3ff;border-radius:12px;padding:16px;overflow:auto;max-height:55vh}
+    .pill{display:inline-block;background:#0f1531;border:1px solid #2b3466;border-radius:999px;padding:6px 10px;font-size:13px;color:#bcd1f7;margin-left:8px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Предсказание рисков сердечного приступа
+        <span class="pill">Порог: {{ '%.3f' % threshold }}</span>
+      </h1>
+
+      <label>Выберите CSV-файл</label>
+      <div class="row">
+        <input id="file" type="file" accept=".csv,text/csv" />
+      </div>
+
+      <div class="row">
+        <button class="btn-blue"   id="btnCsv">Скачать CSV</button>
+        <button class="btn-green"  id="btnJson">Показать JSON</button>
+        <button class="btn-ghost"  id="btnClear">Очистить</button>
+      </div>
+      <div class="status" id="status"></div>
+
+      <pre id="out" hidden></pre>
+    </div>
+  </div>
+
+<script>
+const $ = (id)=>document.getElementById(id);
+const fileInput = $('file');
+const out       = $('out');
+const statusEl  = $('status');
+
+function setStatus(t){ statusEl.textContent = t || ''; }
+function showJSON(obj){ out.hidden = false; out.textContent = JSON.stringify(obj, null, 2); }
+function clearOut(){ out.hidden = true; out.textContent=''; setStatus(''); }
+
+async function postForm(url){
+  const f = fileInput.files?.[0];
+  if(!f){ alert('Сначала выберите файл CSV'); throw new Error('no file'); }
+  const fd = new FormData(); fd.append('file', f, f.name);
+  const res = await fetch(url, { method:'POST', body: fd });
+  if(!res.ok){
+    const err = await res.json().catch(()=>({detail:res.statusText}));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res;
+}
+
+$('btnJson').onclick = async () => {
+  try{
+    setStatus('Считаем…');
+    const res = await postForm('/predict_json');
+    const data = await res.json();
+    showJSON(data);
+    setStatus(`Готово: ${data.length} строк`);
+  }catch(e){ setStatus('Ошибка: ' + e.message); }
+};
+
+$('btnCsv').onclick = async () => {
+  try{
+    setStatus('Готовим CSV…');
+    const f = fileInput.files?.[0];
+    const outName = (f ? f.name.replace(/\.[^.]+$/, '') : 'pred') + '_predictions.csv';
+    const res = await postForm('/predict_submit?out_name=' + encodeURIComponent(outName));
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = outName;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(a.href);
+    a.remove();
+    setStatus('Скачивание началось');
+  }catch(e){ setStatus('Ошибка: ' + e.message); }
+};
+
+$('btnClear').onclick = () => clearOut();
+</script>
+</body>
+</html>
